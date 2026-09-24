@@ -1,0 +1,1156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GameZone Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+  :root{
+    --bg:#12141d; --bg-2:#0d0f16; --surface:#1b1e2b; --surface-2:#232739; --border:#2e3247;
+    --text:#edeef5; --text-dim:#9497ab; --text-faint:#666a82;
+    --violet:#8a6bff; --violet-dim:#3a2f66;
+    --teal:#33e2b9; --teal-dim:#0f3d33;
+    --amber:#ffb648; --amber-dim:#4a3417;
+    --danger:#ff6b6b; --danger-dim:#4a1f1f;
+    --radius:14px; --radius-sm:9px;
+    --font-head:'Space Grotesk','Segoe UI',sans-serif; --font-body:'Inter','Segoe UI',sans-serif;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{height:100%;}
+  body{
+    font-family:var(--font-body);
+    background:
+      radial-gradient(ellipse 900px 500px at 15% -10%, rgba(138,107,255,0.14), transparent 60%),
+      radial-gradient(ellipse 700px 500px at 100% 10%, rgba(51,226,185,0.08), transparent 55%),
+      var(--bg);
+    color:var(--text); min-height:100vh;
+    padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  button{font-family:inherit; cursor:pointer;}
+  input,select{font-family:inherit;}
+
+  .topbar{
+    position:sticky; top:0; z-index:20; display:flex; align-items:center; justify-content:space-between;
+    padding:16px 24px; padding-top:calc(16px + env(safe-area-inset-top,0px));
+    background:rgba(13,15,22,0.85); backdrop-filter:blur(10px); border-bottom:1px solid var(--border);
+    gap:16px; flex-wrap:wrap;
+  }
+  .brand{display:flex; align-items:center; gap:10px; font-family:var(--font-head); font-weight:700; font-size:19px;}
+  .brand .tagline{color:var(--text-faint); font-weight:500; font-size:13px; padding-left:8px; border-left:1px solid var(--border);}
+  .sync-badge{display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-faint); font-weight:600;}
+  .sync-dot{width:8px; height:8px; border-radius:50%; background:var(--text-faint);}
+  .sync-badge.online .sync-dot{background:var(--teal); box-shadow:0 0 6px var(--teal);}
+  .sync-badge.online{color:var(--teal);}
+  .sync-badge.offline .sync-dot{background:var(--danger);}
+  .sync-badge.offline{color:var(--danger);}
+
+  .tabs{display:flex; gap:4px; background:var(--surface); padding:4px; border-radius:11px; border:1px solid var(--border); flex-wrap:wrap;}
+  .tab{background:transparent; border:none; color:var(--text-dim); padding:9px 14px; border-radius:8px; font-size:13.5px; font-weight:600; transition:background .15s, color .15s;}
+  .tab.active{background:var(--violet); color:#fff;}
+  .tab:not(.active):hover{color:var(--text);}
+
+  main{max-width:1180px; margin:0 auto; padding:28px 24px 60px;}
+  .tab-panel{display:none;}
+  .tab-panel.active{display:block; animation:fadein .25s ease;}
+  @keyframes fadein{from{opacity:0; transform:translateY(4px);} to{opacity:1; transform:translateY(0);}}
+
+  .panel-head{display:flex; align-items:flex-end; justify-content:space-between; gap:16px; margin-bottom:22px; flex-wrap:wrap;}
+  .panel-head h1{font-family:var(--font-head); font-size:26px; font-weight:700;}
+  .panel-head .sub{color:var(--text-dim); font-size:14px; margin-top:4px;}
+
+  .tables-grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(180px,1fr)); gap:14px;}
+  .table-card{
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+    padding:18px 16px; text-align:left; display:flex; flex-direction:column; gap:14px;
+    transition:border-color .15s, transform .1s; position:relative; overflow:hidden;
+  }
+  .table-card:hover{border-color:#3d4260; transform:translateY(-2px);}
+  .table-card.running{border-color:var(--teal); box-shadow:0 0 0 1px var(--teal-dim), 0 8px 24px -12px rgba(51,226,185,0.35);}
+  .table-card.paused{border-color:var(--amber); box-shadow:0 0 0 1px var(--amber-dim), 0 8px 24px -12px rgba(255,182,72,0.35);}
+  .table-card .t-top{display:flex; align-items:center; justify-content:space-between;}
+  .table-card .t-name{font-family:var(--font-head); font-weight:700; font-size:17px;}
+  .status-dot{width:9px; height:9px; border-radius:50%; background:var(--text-faint); flex-shrink:0;}
+  .table-card.running .status-dot{background:var(--teal); box-shadow:0 0 8px var(--teal);}
+  .table-card.paused .status-dot{background:var(--amber); box-shadow:0 0 8px var(--amber);}
+  .t-status-label{font-size:12.5px; color:var(--text-dim); font-weight:500;}
+  .table-card.running .t-status-label{color:var(--teal);}
+  .table-card.paused .t-status-label{color:var(--amber);}
+  .t-amount{font-family:var(--font-head); font-size:22px; font-weight:700;}
+  .t-items-count{font-size:12.5px; color:var(--text-faint);}
+  .empty-hint{margin-top:52px;}
+
+  .empty-state{text-align:center; padding:60px 20px; color:var(--text-dim);}
+  .empty-state h3{font-family:var(--font-head); color:var(--text); font-size:18px; margin-bottom:6px;}
+  .empty-state p{font-size:14px; max-width:360px; margin:0 auto;}
+
+  .primary-btn{background:var(--violet); color:#fff; border:none; border-radius:10px; padding:11px 18px; font-size:14px; font-weight:600;}
+  .primary-btn:hover{background:#7a58f5;}
+  .ghost-btn{background:transparent; border:1px solid var(--border); color:var(--text-dim); border-radius:10px; padding:10px 16px; font-size:13.5px; font-weight:600;}
+  .ghost-btn:hover{color:var(--text); border-color:#3d4260;}
+  .ghost-btn.small{padding:8px 14px; font-size:13px;}
+  .ghost-btn.active-filter{border-color:var(--violet); color:var(--violet);}
+  .icon-btn{background:var(--surface-2); border:1px solid var(--border); color:var(--text-dim); width:34px; height:34px; border-radius:9px; display:flex; align-items:center; justify-content:center; font-size:18px; line-height:1;}
+  .icon-btn:hover{color:var(--text);}
+  .icon-btn.danger:hover{color:var(--danger); border-color:var(--danger-dim);}
+  .pause-btn{background:var(--amber-dim); color:var(--amber); border:1px solid var(--amber-dim); border-radius:10px; padding:10px 14px; font-size:13.5px; font-weight:700;}
+  .pause-btn.is-paused{background:var(--teal-dim); color:var(--teal);}
+
+  .sales-controls, .report-controls{display:flex; gap:10px; align-items:center; flex-wrap:wrap;}
+  .sales-controls input[type=date], .report-controls input[type=date]{background:var(--surface); border:1px solid var(--border); color:var(--text); border-radius:10px; padding:9px 12px; font-size:13.5px;}
+
+  .summary-row{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:22px;}
+  .summary-card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:16px 18px;}
+  .summary-card .s-label{font-size:12.5px; color:var(--text-dim); font-weight:600;}
+  .summary-card .s-value{font-family:var(--font-head); font-size:24px; font-weight:700; margin-top:6px;}
+  .summary-card.accent .s-value{color:var(--teal);}
+
+  .sales-table-wrap, .report-table-wrap{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); overflow-x:auto;}
+  table.sales-table, table.report-table{width:100%; border-collapse:collapse; min-width:560px;}
+  .sales-table th, .report-table th{text-align:left; font-size:12px; font-weight:600; color:var(--text-faint); padding:14px 16px; border-bottom:1px solid var(--border);}
+  .sales-table td, .report-table td{padding:13px 16px; font-size:14px; border-bottom:1px solid var(--border); color:var(--text-dim);}
+  .sales-table tr:last-child td, .report-table tr:last-child td{border-bottom:none;}
+  .sales-table td.tname, .report-table td.tname{color:var(--text); font-weight:600;}
+  .sales-table td.amt, .report-table td.amt{color:var(--text); font-weight:700; font-family:var(--font-head);}
+  .pay-badge{font-size:11.5px; font-weight:700; padding:3px 9px; border-radius:20px;}
+  .pay-badge.Cash{background:var(--amber-dim); color:var(--amber);}
+  .pay-badge.Online{background:var(--teal-dim); color:var(--teal);}
+  .pay-badge.Mixed{background:var(--violet-dim); color:var(--violet);}
+  .pay-badge.Credit{background:var(--danger-dim); color:var(--danger);}
+  .cat-row td{background:var(--surface-2); font-family:var(--font-head); font-weight:700; color:var(--violet); font-size:13px;}
+  .cat-subtotal td{color:var(--text-faint); font-style:italic; border-bottom:1px solid var(--border);}
+  .grand-total td{font-weight:800; font-size:15px; color:var(--text); border-top:2px solid var(--border);}
+
+  .settings-grid{display:grid; grid-template-columns:1fr 1fr; gap:18px;}
+  @media (max-width:760px){ .settings-grid{grid-template-columns:1fr;} }
+  .settings-card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:20px;}
+  .settings-card.full{grid-column:1/-1; margin-top:18px;}
+  .settings-card h2{font-family:var(--font-head); font-size:16px; margin-bottom:14px;}
+  .settings-card form{display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap;}
+  .settings-card input{background:var(--bg-2); border:1px solid var(--border); color:var(--text); border-radius:9px; padding:10px 12px; font-size:13.5px; flex:1; min-width:90px;}
+  .settings-card input:focus{outline:none; border-color:var(--violet);}
+  .settings-list{list-style:none; display:flex; flex-direction:column; gap:8px; max-height:340px; overflow-y:auto;}
+  .settings-list li{display:flex; align-items:center; justify-content:space-between; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; padding:10px 12px; font-size:13.5px; gap:8px;}
+  .settings-list li .li-name{font-weight:600;}
+  .settings-list li .li-price{color:var(--teal); font-weight:600; margin-right:10px; font-family:var(--font-head);}
+  .settings-list .li-meta{display:flex; align-items:center;}
+  .cat-badge{font-size:11px; font-weight:700; padding:2px 8px; border-radius:20px; background:var(--violet-dim); color:var(--violet); margin-right:8px;}
+  .log-row{display:flex; justify-content:space-between; gap:10px; font-size:13px; color:var(--text-dim); padding:8px 4px; border-bottom:1px solid var(--border);}
+  .log-row:last-child{border-bottom:none;}
+  .log-row .log-name{color:var(--text); font-weight:600;}
+  .log-row .log-warn{color:var(--danger); font-size:11px; font-weight:700;}
+
+  .modal-overlay{position:fixed; inset:0; background:rgba(8,9,14,0.72); backdrop-filter:blur(3px); display:none; align-items:flex-end; justify-content:center; z-index:100;}
+  .modal-overlay.open{display:flex;}
+  .modal{background:var(--bg); border:1px solid var(--border); width:100%; max-width:760px; border-radius:20px 20px 0 0; max-height:92vh; display:flex; flex-direction:column; padding-bottom:env(safe-area-inset-bottom,0px);}
+  @media (min-width:820px){ .modal-overlay{align-items:center;} .modal{border-radius:18px; max-height:86vh;} }
+  .modal-head{display:flex; align-items:flex-start; justify-content:space-between; padding:18px 20px; border-bottom:1px solid var(--border); gap:10px;}
+  .modal-head h2{font-family:var(--font-head); font-size:19px;}
+  .modal-timer-row{display:flex; align-items:center; gap:10px; margin-top:4px; flex-wrap:wrap;}
+  .modal-body{display:flex; flex-direction:column; overflow-y:auto; flex:1;}
+  @media (min-width:820px){ .modal-body{flex-direction:row;} }
+
+  .menu-pick{padding:16px 20px; flex:1.2; border-bottom:1px solid var(--border);}
+  @media (min-width:820px){ .menu-pick{border-bottom:none; border-right:1px solid var(--border); overflow-y:auto; max-height:60vh;} }
+  .menu-pick h3, .order-panel h3{font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--text-faint); font-weight:700; margin-bottom:10px;}
+  .menu-item-row{display:flex; align-items:center; justify-content:space-between; padding:11px 4px; border-bottom:1px solid var(--border);}
+  .menu-item-row:last-child{border-bottom:none;}
+  .menu-item-row .mi-name{font-weight:600; font-size:14px;}
+  .menu-item-row .mi-price{color:var(--text-dim); font-size:12.5px; font-family:var(--font-head);}
+  .add-item-btn{background:var(--violet-dim); color:var(--violet); border:none; width:32px; height:32px; border-radius:9px; font-size:18px; font-weight:700; line-height:1;}
+  .add-item-btn:hover{background:var(--violet); color:#fff;}
+
+  .order-panel{padding:16px 20px; flex:1; display:flex; flex-direction:column;}
+  .order-list{flex:1; min-height:60px;}
+  .order-empty{color:var(--text-faint); font-size:13.5px; padding:20px 0; text-align:center;}
+  .order-row{display:flex; align-items:center; gap:10px; padding:9px 0; border-bottom:1px solid var(--border);}
+  .order-row .or-name{flex:1; font-size:13.5px; font-weight:600;}
+  .order-row .or-sub{font-size:13px; color:var(--text-dim); width:64px; text-align:right; font-family:var(--font-head);}
+  .qty-stepper{display:flex; align-items:center; gap:6px;}
+  .qty-stepper button{width:24px; height:24px; border-radius:6px; border:1px solid var(--border); background:var(--surface-2); color:var(--text); font-size:14px; line-height:1;}
+  .qty-stepper span{font-size:13.5px; font-weight:600; min-width:16px; text-align:center;}
+
+  .order-total{display:flex; align-items:center; justify-content:space-between; padding:14px 2px; margin-top:8px; border-top:1px solid var(--border); font-family:var(--font-head); font-size:19px; font-weight:700;}
+  .payment-row{display:flex; gap:8px; margin:6px 0 10px;}
+  .pay-btn{flex:1; min-width:70px; padding:11px 6px; border-radius:10px; border:1px solid var(--border); background:var(--surface-2); color:var(--text-dim); font-weight:600; font-size:13.5px;}
+  .pay-btn.selected.cash{background:var(--amber-dim); border-color:var(--amber); color:var(--amber);}
+  .pay-btn.selected.online{background:var(--teal-dim); border-color:var(--teal); color:var(--teal);}
+  .pay-btn.selected.mixed{background:var(--violet-dim); border-color:var(--violet); color:var(--violet);}
+  .pay-btn.selected.credit{background:var(--danger-dim); border-color:var(--danger); color:var(--danger);}
+  .mixed-panel{background:var(--surface-2); border:1px solid var(--border); border-radius:10px; padding:12px; margin:0 0 10px;}
+  .mixed-panel label{font-size:12px; color:var(--text-faint); font-weight:600; display:block; margin-bottom:6px;}
+  .mixed-panel input[type=number]{width:100%; background:var(--bg-2); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:9px 10px; font-size:14px;}
+  .mixed-panel input[type=number]:focus{outline:none; border-color:var(--violet);}
+  .mixed-panel .mixed-breakdown{display:flex; justify-content:space-between; font-size:12.5px; color:var(--text-dim); margin-top:8px;}
+  .menu-search{width:100%; background:var(--bg-2); border:1px solid var(--border); color:var(--text); border-radius:9px; padding:10px 12px; font-size:13.5px; margin-bottom:12px;}
+  .menu-search:focus{outline:none; border-color:var(--violet);}
+  .settle-btn{background:var(--teal); color:#08211b; border:none; border-radius:10px; padding:13px; font-weight:700; font-size:14.5px; margin-bottom:8px;}
+  .settle-btn:disabled{background:var(--surface-2); color:var(--text-faint); cursor:not-allowed;}
+  .settle-btn:not(:disabled):hover{background:#28c9a3;}
+
+  .toast{position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(20px); background:var(--surface-2); border:1px solid var(--border); color:var(--text); padding:12px 20px; border-radius:11px; font-size:13.5px; font-weight:600; opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; z-index:200; box-shadow:0 12px 30px -10px rgba(0,0,0,0.5);}
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+
+  .shift-grid{display:grid; grid-template-columns:1fr auto 1fr; gap:16px; align-items:end; max-width:720px;}
+  @media (max-width:640px){ .shift-grid{grid-template-columns:1fr;} }
+  .shift-grid label{font-size:12.5px; color:var(--text-faint); font-weight:600; display:block; margin-bottom:8px;}
+  .shift-grid select{width:100%; background:var(--surface); border:1px solid var(--border); color:var(--text); border-radius:10px; padding:11px 12px; font-size:14px;}
+  .shift-grid select:focus{outline:none; border-color:var(--violet);}
+  .shift-arrow{display:flex; align-items:center; justify-content:center; color:var(--text-faint); font-size:22px; padding-bottom:11px;}
+  @media (max-width:640px){ .shift-arrow{display:none;} }
+  .shift-info{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:16px 18px; margin-top:18px; font-size:13.5px; color:var(--text-dim); max-width:720px;}
+
+  .lock-card input[type=password]{width:100%; background:var(--bg-2); border:1px solid var(--border); color:var(--text); border-radius:10px; padding:13px 14px; font-size:15px; text-align:center; margin-top:14px;}
+  .lock-card input[type=password]:focus{outline:none; border-color:var(--violet);}
+  .lock-card .lock-error{color:var(--danger); font-size:13px; min-height:18px; margin-top:8px; display:block;}
+
+  .setup-screen{max-width:640px; margin:60px auto; padding:0 20px;}
+  .setup-card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:28px;}
+  .setup-card h1{font-family:var(--font-head); font-size:22px; margin-bottom:10px;}
+  .setup-card p{color:var(--text-dim); font-size:14.5px; line-height:1.6; margin-bottom:10px;}
+  .setup-card ol{color:var(--text-dim); font-size:14.5px; line-height:1.8; padding-left:20px; margin-bottom:14px;}
+  .setup-card code{background:var(--bg-2); border:1px solid var(--border); padding:2px 7px; border-radius:6px; font-size:13px; color:var(--teal);}
+  .setup-card pre{background:var(--bg-2); border:1px solid var(--border); border-radius:10px; padding:14px; font-size:12.5px; color:var(--teal); overflow-x:auto; margin-bottom:10px;}
+
+  @media (max-width:600px){
+    .topbar{padding:12px 16px;}
+    main{padding:20px 14px 50px;}
+    .brand .tagline{display:none;}
+  }
+</style>
+</head>
+<body>
+
+<div id="lockScreen" class="setup-screen" style="display:none;">
+  <div class="setup-card lock-card" style="text-align:center;">
+    <h1>Enter password</h1>
+    <p>This console is restricted to GameZone operators.</p>
+    <form id="lockForm">
+      <input type="password" id="lockPassword" placeholder="Password" autocomplete="current-password" required>
+      <button type="submit" class="primary-btn" style="width:100%; margin-top:14px;">Unlock</button>
+      <span class="lock-error" id="lockError"></span>
+    </form>
+  </div>
+</div>
+
+<div id="app" style="display:none;">
+<header class="topbar">
+  <div class="brand">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+      <rect x="2" y="7" width="20" height="11" rx="5" stroke="#8a6bff" stroke-width="1.8"/>
+      <path d="M6.5 12.5H8.5M7.5 11.5V13.5" stroke="#8a6bff" stroke-width="1.6" stroke-linecap="round"/>
+      <circle cx="16" cy="11.5" r="1.1" fill="#33e2b9"/>
+      <circle cx="18.2" cy="13.5" r="1.1" fill="#33e2b9"/>
+    </svg>
+    <span>GameZone</span>
+    <span class="tagline">Operator Console</span>
+  </div>
+  <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+    <span class="sync-badge" id="syncBadge"><span class="sync-dot"></span><span id="syncText">Connecting…</span></span>
+    <nav class="tabs">
+      <button class="tab active" data-tab="tables">Tables</button>
+      <button class="tab" data-tab="sales">Daily Sales</button>
+      <button class="tab" data-tab="credit">Credit</button>
+      <button class="tab" data-tab="reports">Reports</button>
+      <button class="tab" data-tab="shift">Shift</button>
+      <button class="tab" data-tab="settings">Settings</button>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section id="tab-tables" class="tab-panel active">
+    <div class="panel-head">
+      <div><h1>Tables</h1><p class="sub">Tap a table to add items or settle the bill. Updates live on every device.</p></div>
+    </div>
+    <div id="tablesGrid" class="tables-grid"></div>
+  </section>
+
+  <section id="tab-sales" class="tab-panel">
+    <div class="panel-head">
+      <div><h1>Daily Sales</h1><p class="sub">Every settled bill, most recent first.</p></div>
+      <div class="sales-controls">
+        <input type="date" id="salesDate">
+        <button id="allTimeBtn" class="ghost-btn">All time</button>
+      </div>
+    </div>
+    <div class="summary-row" id="salesSummary"></div>
+    <div class="sales-table-wrap">
+      <table class="sales-table">
+        <thead><tr><th>Time</th><th>Table</th><th>Items</th><th>Payment</th><th>Amount</th></tr></thead>
+        <tbody id="salesBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="tab-credit" class="tab-panel">
+    <div class="panel-head">
+      <div><h1>Credit</h1><p class="sub">Bills settled on credit — held separately and excluded from Daily Sales until collected.</p></div>
+      <div class="report-controls">
+        <input type="date" id="creditFrom">
+        <span style="color:var(--text-faint); font-size:13px;">to</span>
+        <input type="date" id="creditTo">
+        <button id="runCreditBtn" class="primary-btn">View credit</button>
+      </div>
+    </div>
+    <div class="summary-row" id="creditSummary"></div>
+    <div class="report-table-wrap">
+      <table class="report-table">
+        <thead><tr><th>Date &amp; time</th><th>Table</th><th>Items</th><th>Amount</th></tr></thead>
+        <tbody id="creditBody"><tr><td colspan="4" style="text-align:center; padding:36px; color:var(--text-faint);">Pick a date range and click "View credit".</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="tab-reports" class="tab-panel">
+    <div class="panel-head">
+      <div><h1>Sales Report</h1><p class="sub">Units sold per item, grouped by category, for a date range.</p></div>
+      <div class="report-controls">
+        <input type="date" id="reportFrom">
+        <span style="color:var(--text-faint); font-size:13px;">to</span>
+        <input type="date" id="reportTo">
+        <button id="runReportBtn" class="primary-btn">Run report</button>
+      </div>
+    </div>
+    <div class="summary-row" id="reportSummary"></div>
+    <div class="report-table-wrap">
+      <table class="report-table">
+        <thead><tr><th>Item</th><th>Units sold</th><th>Revenue</th></tr></thead>
+        <tbody id="reportBody"><tr><td colspan="3" style="text-align:center; padding:36px; color:var(--text-faint);">Pick a date range and run the report.</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="tab-shift" class="tab-panel">
+    <div class="panel-head">
+      <div><h1>Shift Table</h1><p class="sub">Move a running order to a different, empty table — items, total and the timer all move with it.</p></div>
+    </div>
+    <div class="shift-grid">
+      <div>
+        <label for="shiftFrom">From (running table)</label>
+        <select id="shiftFrom"><option value="">Select table…</option></select>
+      </div>
+      <div class="shift-arrow">→</div>
+      <div>
+        <label for="shiftTo">To (empty table)</label>
+        <select id="shiftTo"><option value="">Select table…</option></select>
+      </div>
+    </div>
+    <button id="shiftBtn" class="primary-btn" style="margin-top:18px;" disabled>Shift table</button>
+    <div class="shift-info" id="shiftInfo" style="display:none;"></div>
+  </section>
+
+  <section id="tab-settings" class="tab-panel">
+    <div class="panel-head"><div><h1>Settings</h1><p class="sub">Manage tables and menu items — synced to every device.</p></div></div>
+    <div class="settings-grid">
+      <div class="settings-card">
+        <h2>Tables</h2>
+        <form id="addTableForm">
+          <input type="text" id="newTableName" placeholder="e.g. PS5 - 1" required>
+          <button type="submit" class="primary-btn">Add</button>
+        </form>
+        <ul class="settings-list" id="tablesList"></ul>
+      </div>
+      <div class="settings-card">
+        <h2>Menu items</h2>
+        <form id="addMenuForm">
+          <input type="text" id="newItemName" placeholder="Item name" required>
+          <input type="text" id="newItemCategory" placeholder="Category" list="categoryList" style="max-width:120px;">
+          <input type="number" id="newItemPrice" placeholder="Price" min="0" step="1" required style="max-width:80px;">
+          <datalist id="categoryList"></datalist>
+          <button type="submit" class="primary-btn">Add</button>
+        </form>
+        <ul class="settings-list" id="menuList"></ul>
+      </div>
+      <div class="settings-card full">
+        <h2>Cleared tables log</h2>
+        <p style="color:var(--text-faint); font-size:12.5px; margin:-8px 0 12px;">Orders cleared without collecting payment — not counted in sales.</p>
+        <div id="clearedLog"><p style="color:var(--text-faint); font-size:13.5px;">No cleared orders yet.</p></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div id="modalOverlay" class="modal-overlay">
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <h2 id="modalTableName">Table</h2>
+        <div class="modal-timer-row">
+          <span id="modalDuration" style="font-size:12.5px; color:var(--text-faint);"></span>
+          <button id="pauseBtn" class="pause-btn" style="display:none;">Pause</button>
+        </div>
+      </div>
+      <button id="closeModal" class="icon-btn">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="menu-pick">
+        <h3>Menu</h3>
+        <input type="text" id="menuSearch" class="menu-search" placeholder="Search menu items…">
+        <div id="menuPick"></div>
+      </div>
+      <div class="order-panel">
+        <h3>Current order</h3>
+        <div class="order-list" id="orderList"></div>
+        <div class="order-total"><span>Total</span><span id="orderTotal">₹0</span></div>
+        <div class="payment-row">
+          <button class="pay-btn cash" data-method="Cash">Cash</button>
+          <button class="pay-btn online" data-method="Online">Online</button>
+          <button class="pay-btn mixed" data-method="Mixed">Mixed</button>
+          <button class="pay-btn credit" data-method="Credit">Credit</button>
+        </div>
+        <div class="mixed-panel" id="mixedPanel" style="display:none;">
+          <label for="mixedOnlineInput">Amount received online (rest goes to cash)</label>
+          <input type="number" id="mixedOnlineInput" min="0" step="1" placeholder="0">
+          <div class="mixed-breakdown"><span>Online: <b id="mixedOnlineVal">₹0</b></span><span>Cash: <b id="mixedCashVal">₹0</b></span></div>
+        </div>
+        <button id="settleBtn" class="settle-btn" disabled>Settle bill</button>
+        <button id="clearOrderBtn" class="ghost-btn small">Clear order (no payment)</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+</div>
+
+<div id="setupScreen" class="setup-screen" style="display:none;">
+  <div class="setup-card">
+    <h1>One-time setup needed</h1>
+    <p>This console syncs every device in real time through a free Firebase (Firestore) project. Takes about 3 minutes:</p>
+    <ol>
+      <li>Go to <code>console.firebase.google.com</code> → Add project (free Spark plan is enough).</li>
+      <li>In the project, open <b>Build → Firestore Database</b> → Create database → start in <b>test mode</b>.</li>
+      <li>Go to <b>Project settings → General</b>, scroll to "Your apps", click the <code>&lt;/&gt;</code> web icon, register an app, and copy the <code>firebaseConfig</code> object it shows you.</li>
+      <li>Open this HTML file in a text editor, find the <code>firebaseConfig</code> block near the top of the script, and paste your values in.</li>
+      <li>Re-upload/host the file. Every device that opens it will now share the same live data.</li>
+    </ol>
+    <p>Test mode keeps Firestore open to anyone with the config for 30 days — fine for getting started, but before going live long-term, tighten the rules, e.g.:</p>
+    <pre>rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if true; // replace with real auth checks later
+    }
+  }
+}</pre>
+    <p style="color:var(--text-faint); font-size:13px;">This message disappears automatically once valid config is saved in the file.</p>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ====================== PASSWORD GATE ======================
+  const OPERATOR_PASSWORD = "Jaiguruji";
+  if(sessionStorage.getItem("gz_authed") !== "true"){
+    document.getElementById("lockScreen").style.display = "block";
+    document.getElementById("lockForm").addEventListener("submit", function(e){
+      e.preventDefault();
+      const entered = document.getElementById("lockPassword").value;
+      if(entered === OPERATOR_PASSWORD){
+        sessionStorage.setItem("gz_authed", "true");
+        location.reload();
+      } else {
+        document.getElementById("lockError").textContent = "Incorrect password, try again.";
+        document.getElementById("lockPassword").value = "";
+      }
+    });
+    return; // stop here — nothing else runs until the correct password is entered
+  }
+
+  // ====================== FIREBASE SETUP ======================
+  // Paste your Firebase project's config here (Project settings → General → your web app).
+  const firebaseConfig = {
+    apiKey: "AIzaSyCmtP5mlJIB3769WJAqb0P_r-yNseuDla0",
+    authDomain: "gamingzonemanager-c85eb.firebaseapp.com",
+    projectId: "gamingzonemanager-c85eb",
+    storageBucket: "gamingzonemanager-c85eb.firebasestorage.app",
+    messagingSenderId: "927292924527",
+    appId: "1:927292924527:web:e949f3cd30bc050c8e639a"
+  };
+  // ==============================================================
+
+  if(!firebaseConfig.apiKey || firebaseConfig.apiKey.indexOf("YOUR_") === 0){
+    document.getElementById("setupScreen").style.display = "block";
+    return;
+  }
+  document.getElementById("app").style.display = "block";
+
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+  const tablesCol = db.collection("gz_tables");
+  const menuCol = db.collection("gz_menu");
+  const ordersCol = db.collection("gz_orders");
+  const salesCol = db.collection("gz_sales");
+  const clearedCol = db.collection("gz_cleared_log");
+
+  const currency = n => "₹" + Number(n||0).toLocaleString("en-IN");
+  const escapeHtml = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+  function formatClock(ms){
+    const totalSec = Math.max(0, Math.floor(ms/1000));
+    const h = Math.floor(totalSec/3600), m = Math.floor((totalSec%3600)/60), s = totalSec%60;
+    const mm = String(m).padStart(2,"0"), ss = String(s).padStart(2,"0");
+    return h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
+  }
+
+  // local mirror of Firestore state, kept live by onSnapshot listeners
+  let data = { tables: [], menu: [], orders: {}, sales: [], clearedLog: [] };
+
+  function showToast(msg){
+    const t = document.getElementById("toast");
+    t.textContent = msg; t.classList.add("show");
+    clearTimeout(showToast._tm);
+    showToast._tm = setTimeout(()=>t.classList.remove("show"), 2200);
+  }
+
+  // ---------- connection status ----------
+  const syncBadge = document.getElementById("syncBadge");
+  const syncText = document.getElementById("syncText");
+  db.collection("gz_tables").limit(1).onSnapshot(
+    { includeMetadataChanges: true },
+    snap => {
+      const offline = snap.metadata.fromCache && !navigator.onLine;
+      syncBadge.className = "sync-badge " + (offline ? "offline" : "online");
+      syncText.textContent = offline ? "Offline — will sync" : "Live";
+    },
+    () => { syncBadge.className = "sync-badge offline"; syncText.textContent = "Connection error"; }
+  );
+
+  // ---------- tabs ----------
+  document.querySelectorAll(".tab").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      document.querySelectorAll(".tab").forEach(b=>b.classList.remove("active"));
+      document.querySelectorAll(".tab-panel").forEach(p=>p.classList.remove("active"));
+      btn.classList.add("active");
+      document.getElementById("tab-"+btn.dataset.tab).classList.add("active");
+      if(btn.dataset.tab === "sales") renderSales();
+      if(btn.dataset.tab === "shift") renderShiftTab();
+    });
+  });
+
+  // ====================== LIVE LISTENERS ======================
+  tablesCol.orderBy("createdAt").onSnapshot(snap=>{
+    data.tables = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    renderTables(); renderSettings();
+    if(document.getElementById("tab-shift").classList.contains("active")) renderShiftTab();
+  });
+
+  menuCol.orderBy("name").onSnapshot(snap=>{
+    data.menu = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    renderSettings();
+    if(overlay.classList.contains("open")) renderMenuPick();
+  });
+
+  ordersCol.onSnapshot(snap=>{
+    data.orders = {};
+    snap.docs.forEach(d=> data.orders[d.id] = d.data());
+    renderTables();
+    if(overlay.classList.contains("open") && currentTableId){
+      renderOrder(); renderModalDuration(); renderPauseBtn();
+    }
+    if(document.getElementById("tab-shift").classList.contains("active")) renderShiftTab();
+  });
+
+  clearedCol.orderBy("clearedAt","desc").limit(50).onSnapshot(snap=>{
+    data.clearedLog = snap.docs.map(d=>d.data());
+    renderClearedLog();
+  });
+
+  function todayStartMs(){ const d=new Date(); d.setHours(0,0,0,0); return d.getTime(); }
+  let unsubSalesToday = salesCol.where("timestamp",">=", todayStartMs()).onSnapshot(snap=>{
+    data.sales = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    if(!allTime) renderSales();
+  });
+  let unsubSalesAll = null;
+
+  // ====================== TABLES ======================
+  function orderTotal(tableId){
+    const o = data.orders[tableId];
+    if(!o) return 0;
+    return (o.items||[]).reduce((s,i)=> s + i.price*i.qty, 0);
+  }
+  function orderCount(tableId){
+    const o = data.orders[tableId];
+    if(!o) return 0;
+    return (o.items||[]).reduce((s,i)=> s + i.qty, 0);
+  }
+  function orderElapsedMs(o){
+    if(!o) return 0;
+    return (o.accumulatedMs||0) + (o.runningSince ? Date.now()-o.runningSince : 0);
+  }
+
+  function renderTables(){
+    const grid = document.getElementById("tablesGrid");
+    grid.innerHTML = "";
+    if(data.tables.length === 0){
+      grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;"><h3>No tables yet</h3><p>Add your first table from Settings to start taking orders.</p></div>`;
+      return;
+    }
+    data.tables.forEach(t=>{
+      const o = data.orders[t.id];
+      const count = orderCount(t.id);
+      const running = count > 0;
+      const paused = running && o && o.paused;
+      const total = orderTotal(t.id);
+      const elapsed = running ? orderElapsedMs(o) : 0;
+      const card = document.createElement("button");
+      card.className = "table-card" + (running ? (paused ? " paused" : " running") : "");
+      card.innerHTML = `
+        <div class="t-top"><span class="t-name">${escapeHtml(t.name)}</span><span class="status-dot"></span></div>
+        <span class="t-status-label">${running
+          ? (paused ? "Paused · " : "Running · ") + `<span class="t-timer" data-accum="${o.accumulatedMs||0}" data-running="${o.runningSince||''}">${formatClock(elapsed)}</span>`
+          : "Empty"}</span>
+        ${running
+          ? `<div><div class="t-amount">${currency(total)}</div><div class="t-items-count">${count} item${count>1?"s":""}</div></div>`
+          : `<div class="empty-hint t-items-count">Tap to open a tab</div>`}
+      `;
+      card.addEventListener("click", ()=> openTable(t.id));
+      grid.appendChild(card);
+    });
+  }
+
+  // ====================== MODAL / ORDER ======================
+  let currentTableId = null;
+  let selectedPayment = null;
+  const overlay = document.getElementById("modalOverlay");
+  document.getElementById("closeModal").addEventListener("click", closeModal);
+  overlay.addEventListener("click", e=>{ if(e.target===overlay) closeModal(); });
+
+  function openTable(id){
+    currentTableId = id;
+    selectedPayment = null;
+    const t = data.tables.find(x=>x.id===id);
+    if(!t) return;
+    document.getElementById("modalTableName").textContent = t.name;
+    document.getElementById("menuSearch").value = "";
+    document.getElementById("mixedPanel").style.display = "none";
+    document.getElementById("mixedOnlineInput").value = "";
+    renderMenuPick();
+    renderOrder();
+    renderModalDuration();
+    renderPauseBtn();
+    document.querySelectorAll(".pay-btn").forEach(b=>b.classList.remove("selected"));
+    overlay.classList.add("open");
+  }
+  function closeModal(){ overlay.classList.remove("open"); currentTableId = null; }
+
+  function renderMenuPick(){
+    const wrap = document.getElementById("menuPick");
+    if(data.menu.length === 0){
+      wrap.innerHTML = `<p style="color:var(--text-faint); font-size:13.5px;">No menu items yet. Add some from Settings.</p>`;
+      return;
+    }
+    const q = (document.getElementById("menuSearch").value||"").trim().toLowerCase();
+    const list = q
+      ? data.menu.filter(m => m.name.toLowerCase().includes(q) || (m.category||"").toLowerCase().includes(q))
+      : data.menu;
+    if(list.length === 0){
+      wrap.innerHTML = `<p style="color:var(--text-faint); font-size:13.5px;">No items match "${escapeHtml(q)}".</p>`;
+      return;
+    }
+    wrap.innerHTML = list.map(m=>`
+      <div class="menu-item-row">
+        <div><div class="mi-name">${escapeHtml(m.name)}</div><div class="mi-price">${currency(m.price)}</div></div>
+        <button class="add-item-btn" data-item="${m.id}">+</button>
+      </div>`).join("");
+    wrap.querySelectorAll(".add-item-btn").forEach(btn=>{
+      btn.addEventListener("click", ()=> addItemToOrder(btn.dataset.item));
+    });
+  }
+  document.getElementById("menuSearch").addEventListener("input", renderMenuPick);
+
+  async function addItemToOrder(itemId){
+    const menuItem = data.menu.find(m=>m.id===itemId);
+    if(!menuItem || !currentTableId) return;
+    const existing = data.orders[currentTableId];
+    if(!existing){
+      await ordersCol.doc(currentTableId).set({
+        items: [{itemId, name:menuItem.name, price:menuItem.price, category:menuItem.category||"General", qty:1, addedAt: Date.now()}],
+        accumulatedMs: 0, runningSince: Date.now(), paused: false
+      });
+    } else {
+      const items = existing.items.slice();
+      const row = items.find(i=>i.itemId===itemId);
+      if(row){ row.qty += 1; row.addedAt = Date.now(); }
+      else items.push({itemId, name:menuItem.name, price:menuItem.price, category:menuItem.category||"General", qty:1, addedAt: Date.now()});
+      await ordersCol.doc(currentTableId).update({items});
+    }
+  }
+
+  async function changeQty(itemId, delta){
+    const existing = data.orders[currentTableId];
+    if(!existing) return;
+    let items = existing.items.slice();
+    const row = items.find(i=>i.itemId===itemId);
+    if(!row) return;
+    row.qty += delta;
+    if(delta > 0) row.addedAt = Date.now();
+    if(row.qty <= 0) items = items.filter(i=>i.itemId!==itemId);
+    if(items.length === 0) await ordersCol.doc(currentTableId).delete();
+    else await ordersCol.doc(currentTableId).update({items});
+  }
+
+  function renderOrder(){
+    const o = data.orders[currentTableId];
+    const items = o ? (o.items||[]) : [];
+    const listEl = document.getElementById("orderList");
+    if(items.length === 0){
+      listEl.innerHTML = `<div class="order-empty">No items added yet</div>`;
+    } else {
+      listEl.innerHTML = items.map(i=>`
+        <div class="order-row">
+          <div style="flex:1; min-width:0;">
+            <div class="or-name">${escapeHtml(i.name)}</div>
+            ${i.addedAt ? `<div style="font-size:10.5px; color:var(--text-faint);">Added ${new Date(i.addedAt).toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"})}</div>` : ""}
+          </div>
+          <div class="qty-stepper">
+            <button data-act="minus" data-item="${i.itemId}">&minus;</button>
+            <span>${i.qty}</span>
+            <button data-act="plus" data-item="${i.itemId}">+</button>
+          </div>
+          <span class="or-sub">${currency(i.price*i.qty)}</span>
+        </div>`).join("");
+      listEl.querySelectorAll("button[data-act]").forEach(btn=>{
+        btn.addEventListener("click", ()=> changeQty(btn.dataset.item, btn.dataset.act==="plus"?1:-1));
+      });
+    }
+    const total = items.reduce((s,i)=>s+i.price*i.qty,0);
+    document.getElementById("orderTotal").textContent = currency(total);
+    let canSettle = items.length > 0 && !!selectedPayment;
+    if(selectedPayment === "Mixed"){
+      updateMixedBreakdown();
+      const val = document.getElementById("mixedOnlineInput").value;
+      canSettle = canSettle && val !== "" && !isNaN(parseFloat(val)) && parseFloat(val) >= 0;
+    }
+    document.getElementById("settleBtn").disabled = !canSettle;
+  }
+
+  function updateMixedBreakdown(){
+    const o = data.orders[currentTableId];
+    const total = o ? o.items.reduce((s,i)=>s+i.price*i.qty,0) : 0;
+    let onlineAmt = parseFloat(document.getElementById("mixedOnlineInput").value);
+    if(isNaN(onlineAmt) || onlineAmt < 0) onlineAmt = 0;
+    if(onlineAmt > total) onlineAmt = total;
+    document.getElementById("mixedOnlineVal").textContent = currency(onlineAmt);
+    document.getElementById("mixedCashVal").textContent = currency(total - onlineAmt);
+  }
+  document.getElementById("mixedOnlineInput").addEventListener("input", renderOrder);
+
+  function renderModalDuration(){
+    const el = document.getElementById("modalDuration");
+    const o = data.orders[currentTableId];
+    if(o && o.items.length > 0){
+      const elapsed = orderElapsedMs(o);
+      el.innerHTML = (o.paused ? "Paused at " : "Active for ") +
+        `<span class="t-timer" data-accum="${o.accumulatedMs||0}" data-running="${o.runningSince||''}">${formatClock(elapsed)}</span>`;
+    } else {
+      el.textContent = "No order started yet";
+    }
+  }
+
+  function renderPauseBtn(){
+    const btn = document.getElementById("pauseBtn");
+    const o = data.orders[currentTableId];
+    if(!o || o.items.length === 0){ btn.style.display = "none"; return; }
+    btn.style.display = "inline-block";
+    btn.textContent = o.paused ? "Resume timer" : "Pause timer";
+    btn.classList.toggle("is-paused", !!o.paused);
+  }
+
+  document.getElementById("pauseBtn").addEventListener("click", async ()=>{
+    const o = data.orders[currentTableId];
+    if(!o) return;
+    if(o.paused){
+      await ordersCol.doc(currentTableId).update({ paused:false, runningSince: Date.now() });
+    } else {
+      const accum = (o.accumulatedMs||0) + (o.runningSince ? Date.now()-o.runningSince : 0);
+      await ordersCol.doc(currentTableId).update({ paused:true, runningSince:null, accumulatedMs:accum });
+    }
+  });
+
+  document.querySelectorAll(".pay-btn").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      selectedPayment = btn.dataset.method;
+      document.querySelectorAll(".pay-btn").forEach(b=>b.classList.remove("selected"));
+      btn.classList.add("selected");
+      document.getElementById("mixedPanel").style.display = selectedPayment === "Mixed" ? "block" : "none";
+      renderOrder();
+    });
+  });
+
+  let settling = false;
+  document.getElementById("settleBtn").addEventListener("click", async ()=>{
+    if(settling) return;
+    const o = data.orders[currentTableId];
+    if(!o || o.items.length === 0 || !selectedPayment) return;
+    settling = true;
+    document.getElementById("settleBtn").disabled = true;
+    try{
+      const t = data.tables.find(x=>x.id===currentTableId);
+      const total = o.items.reduce((s,i)=>s+i.price*i.qty,0);
+      const durationMs = orderElapsedMs(o);
+      const saleDoc = {
+        tableId: currentTableId,
+        tableName: t ? t.name : "Deleted table",
+        items: o.items.map(i=>({name:i.name, price:i.price, qty:i.qty, category:i.category||"General", addedAt:i.addedAt||null})),
+        total, payment: selectedPayment, timestamp: Date.now(), durationMs
+      };
+      if(selectedPayment === "Mixed"){
+        let onlineAmt = parseFloat(document.getElementById("mixedOnlineInput").value);
+        if(isNaN(onlineAmt) || onlineAmt < 0) onlineAmt = 0;
+        if(onlineAmt > total) onlineAmt = total;
+        saleDoc.onlineAmount = onlineAmt;
+        saleDoc.cashAmount = total - onlineAmt;
+      }
+      await salesCol.add(saleDoc);
+      await ordersCol.doc(currentTableId).delete();
+      showToast("Bill settled · " + currency(total) + " · " + selectedPayment);
+      closeModal();
+    } finally {
+      settling = false;
+    }
+  });
+
+  let clearing = false;
+  document.getElementById("clearOrderBtn").addEventListener("click", async ()=>{
+    if(clearing) return;
+    const o = data.orders[currentTableId];
+    if(!currentTableId || !o) return;
+    if(!confirm("Clear this order without recording a sale?")) return;
+    clearing = true;
+    try{
+      const t = data.tables.find(x=>x.id===currentTableId);
+      const total = o.items.reduce((s,i)=>s+i.price*i.qty,0);
+      await clearedCol.add({
+        tableId: currentTableId,
+        tableName: t ? t.name : "Unknown",
+        items: o.items.map(i=>({name:i.name, price:i.price, qty:i.qty})),
+        total, clearedAt: Date.now()
+      });
+      await ordersCol.doc(currentTableId).delete();
+      renderOrder(); renderModalDuration(); renderPauseBtn();
+    } finally {
+      clearing = false;
+    }
+  });
+
+  // ====================== DAILY SALES TAB ======================
+  const salesDateInput = document.getElementById("salesDate");
+  let allTime = false;
+  function todayStr(){ const d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+  salesDateInput.value = todayStr();
+
+  salesDateInput.addEventListener("change", ()=>{
+    allTime = false;
+    document.getElementById("allTimeBtn").classList.remove("active-filter");
+    loadSalesForDate(salesDateInput.value);
+  });
+  document.getElementById("allTimeBtn").addEventListener("click", ()=>{
+    allTime = !allTime;
+    document.getElementById("allTimeBtn").classList.toggle("active-filter", allTime);
+    if(allTime){
+      if(unsubSalesAll) unsubSalesAll();
+      unsubSalesAll = salesCol.orderBy("timestamp","desc").limit(500).onSnapshot(snap=>{
+        data.sales = snap.docs.map(d=>({id:d.id, ...d.data()}));
+        renderSales();
+      });
+    } else {
+      if(unsubSalesAll){ unsubSalesAll(); unsubSalesAll = null; }
+      loadSalesForDate(salesDateInput.value);
+    }
+  });
+
+  function loadSalesForDate(dateStr){
+    const start = new Date(dateStr+"T00:00:00").getTime();
+    const end = start + 24*60*60*1000;
+    if(unsubSalesToday) unsubSalesToday();
+    unsubSalesToday = salesCol.where("timestamp",">=",start).where("timestamp","<",end).onSnapshot(snap=>{
+      data.sales = snap.docs.map(d=>({id:d.id, ...d.data()}));
+      if(!allTime) renderSales();
+    });
+  }
+
+  function renderSales(){
+    const sales = data.sales.slice().filter(x=>x.payment!=="Credit").sort((a,b)=>b.timestamp-a.timestamp);
+    const total = sales.reduce((s,x)=>s+x.total,0);
+    const cash = sales.reduce((s,x)=> s + (x.payment==="Cash" ? x.total : x.payment==="Mixed" ? (x.cashAmount||0) : 0), 0);
+    const online = sales.reduce((s,x)=> s + (x.payment==="Online" ? x.total : x.payment==="Mixed" ? (x.onlineAmount||0) : 0), 0);
+    document.getElementById("salesSummary").innerHTML = `
+      <div class="summary-card accent"><div class="s-label">Total sales</div><div class="s-value">${currency(total)}</div></div>
+      <div class="summary-card"><div class="s-label">Cash</div><div class="s-value">${currency(cash)}</div></div>
+      <div class="summary-card"><div class="s-label">Online</div><div class="s-value">${currency(online)}</div></div>
+      <div class="summary-card"><div class="s-label">Transactions</div><div class="s-value">${sales.length}</div></div>`;
+    const body = document.getElementById("salesBody");
+    if(sales.length === 0){
+      body.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:36px; color:var(--text-faint);">No sales recorded for this period.</td></tr>`;
+      return;
+    }
+    body.innerHTML = sales.map(s=>{
+      const d = new Date(s.timestamp);
+      const time = d.toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"}) + (allTime ? " · " + d.toLocaleDateString("en-IN") : "");
+      const itemsSummary = (s.items||[]).map(i=> i.name + (i.qty>1?" x"+i.qty:"")).join(", ");
+      const payExtra = s.payment==="Mixed"
+        ? `<div style="font-size:10.5px; color:var(--text-faint); margin-top:3px;">${currency(s.onlineAmount||0)} online / ${currency(s.cashAmount||0)} cash</div>`
+        : "";
+      return `<tr>
+        <td>${time}</td><td class="tname">${escapeHtml(s.tableName)}</td>
+        <td title="${escapeHtml(itemsSummary)}">${escapeHtml(itemsSummary.length>40?itemsSummary.slice(0,40)+"…":itemsSummary)}</td>
+        <td><span class="pay-badge ${s.payment}">${s.payment}</span>${payExtra}</td>
+        <td class="amt">${currency(s.total)}</td></tr>`;
+    }).join("");
+  }
+
+  // ====================== REPORTS TAB (date range, by category) ======================
+  const reportFrom = document.getElementById("reportFrom");
+  const reportTo = document.getElementById("reportTo");
+  reportFrom.value = todayStr(); reportTo.value = todayStr();
+
+  document.getElementById("runReportBtn").addEventListener("click", async ()=>{
+    const fromStr = reportFrom.value, toStr = reportTo.value;
+    if(!fromStr || !toStr) return;
+    const start = new Date(fromStr+"T00:00:00").getTime();
+    const end = new Date(toStr+"T00:00:00").getTime() + 24*60*60*1000;
+    const body = document.getElementById("reportBody");
+    body.innerHTML = `<tr><td colspan="3" style="text-align:center; padding:36px; color:var(--text-faint);">Loading…</td></tr>`;
+    try{
+      const snap = await salesCol.where("timestamp",">=",start).where("timestamp","<",end).get();
+      const sales = snap.docs.map(d=>d.data());
+      renderReport(sales);
+    }catch(e){
+      body.innerHTML = `<tr><td colspan="3" style="text-align:center; padding:36px; color:var(--danger);">Couldn't load report: ${escapeHtml(e.message||e)}</td></tr>`;
+    }
+  });
+
+  function renderReport(sales){
+    const byCategory = {};
+    let grandUnits = 0, grandRevenue = 0;
+    sales.forEach(s=>{
+      (s.items||[]).forEach(i=>{
+        const cat = i.category || "General";
+        if(!byCategory[cat]) byCategory[cat] = {};
+        if(!byCategory[cat][i.name]) byCategory[cat][i.name] = {qty:0, revenue:0};
+        byCategory[cat][i.name].qty += i.qty;
+        byCategory[cat][i.name].revenue += i.price*i.qty;
+        grandUnits += i.qty; grandRevenue += i.price*i.qty;
+      });
+    });
+    document.getElementById("reportSummary").innerHTML = `
+      <div class="summary-card accent"><div class="s-label">Total revenue</div><div class="s-value">${currency(grandRevenue)}</div></div>
+      <div class="summary-card"><div class="s-label">Units sold</div><div class="s-value">${grandUnits}</div></div>
+      <div class="summary-card"><div class="s-label">Bills</div><div class="s-value">${sales.length}</div></div>`;
+
+    const body = document.getElementById("reportBody");
+    const categories = Object.keys(byCategory).sort();
+    if(categories.length === 0){
+      body.innerHTML = `<tr><td colspan="3" style="text-align:center; padding:36px; color:var(--text-faint);">No sales in this range.</td></tr>`;
+      return;
+    }
+    let rows = "";
+    categories.forEach(cat=>{
+      rows += `<tr class="cat-row"><td colspan="3">${escapeHtml(cat)}</td></tr>`;
+      let catUnits = 0, catRevenue = 0;
+      Object.keys(byCategory[cat]).sort().forEach(name=>{
+        const row = byCategory[cat][name];
+        catUnits += row.qty; catRevenue += row.revenue;
+        rows += `<tr><td>${escapeHtml(name)}</td><td>${row.qty}</td><td class="amt">${currency(row.revenue)}</td></tr>`;
+      });
+      rows += `<tr class="cat-subtotal"><td>Subtotal — ${escapeHtml(cat)}</td><td>${catUnits}</td><td>${currency(catRevenue)}</td></tr>`;
+    });
+    rows += `<tr class="grand-total"><td>Grand total</td><td>${grandUnits}</td><td>${currency(grandRevenue)}</td></tr>`;
+    body.innerHTML = rows;
+  }
+
+  // ====================== CREDIT TAB (date range, held separately from Daily Sales) ======================
+  const creditFrom = document.getElementById("creditFrom");
+  const creditTo = document.getElementById("creditTo");
+  creditFrom.value = todayStr(); creditTo.value = todayStr();
+
+  document.getElementById("runCreditBtn").addEventListener("click", async ()=>{
+    const fromStr = creditFrom.value, toStr = creditTo.value;
+    if(!fromStr || !toStr) return;
+    const start = new Date(fromStr+"T00:00:00").getTime();
+    const end = new Date(toStr+"T00:00:00").getTime() + 24*60*60*1000;
+    const body = document.getElementById("creditBody");
+    body.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:36px; color:var(--text-faint);">Loading…</td></tr>`;
+    try{
+      const snap = await salesCol.where("timestamp",">=",start).where("timestamp","<",end).get();
+      const sales = snap.docs.map(d=>({id:d.id, ...d.data()})).filter(s=>s.payment==="Credit");
+      renderCredit(sales);
+    }catch(e){
+      body.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:36px; color:var(--danger);">Couldn't load credit bills: ${escapeHtml(e.message||e)}</td></tr>`;
+    }
+  });
+
+  function renderCredit(sales){
+    sales = sales.slice().sort((a,b)=>b.timestamp-a.timestamp);
+    const total = sales.reduce((s,x)=>s+x.total,0);
+    document.getElementById("creditSummary").innerHTML = `
+      <div class="summary-card accent"><div class="s-label">Total credit</div><div class="s-value">${currency(total)}</div></div>
+      <div class="summary-card"><div class="s-label">Bills</div><div class="s-value">${sales.length}</div></div>`;
+    const body = document.getElementById("creditBody");
+    if(sales.length === 0){
+      body.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:36px; color:var(--text-faint);">No credit bills in this range.</td></tr>`;
+      return;
+    }
+    body.innerHTML = sales.map(s=>{
+      const d = new Date(s.timestamp);
+      const dateTime = d.toLocaleDateString("en-IN") + " " + d.toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"});
+      const itemsSummary = (s.items||[]).map(i=> i.name + (i.qty>1?" x"+i.qty:"")).join(", ");
+      return `<tr>
+        <td>${dateTime}</td><td class="tname">${escapeHtml(s.tableName)}</td>
+        <td title="${escapeHtml(itemsSummary)}">${escapeHtml(itemsSummary.length>40?itemsSummary.slice(0,40)+"…":itemsSummary)}</td>
+        <td class="amt">${currency(s.total)}</td></tr>`;
+    }).join("");
+  }
+
+  // ====================== SETTINGS: TABLES ======================
+  document.getElementById("addTableForm").addEventListener("submit", async e=>{
+    e.preventDefault();
+    const input = document.getElementById("newTableName");
+    const name = input.value.trim();
+    if(!name) return;
+    await tablesCol.add({name, createdAt: Date.now()});
+    input.value = "";
+  });
+
+  async function deleteTable(id){
+    const hasOrder = !!data.orders[id];
+    const msg = hasOrder
+      ? "This table has a running order that hasn't been billed. Delete it anyway and lose that order?"
+      : "Delete this table?";
+    if(!confirm(msg)) return;
+    if(hasOrder) await ordersCol.doc(id).delete();
+    await tablesCol.doc(id).delete();
+  }
+
+  function renderTablesList(){
+    const ul = document.getElementById("tablesList");
+    if(data.tables.length===0){ ul.innerHTML = `<li style="justify-content:center; color:var(--text-faint);">No tables yet</li>`; return; }
+    ul.innerHTML = data.tables.map(t=>`
+      <li><span class="li-name">${escapeHtml(t.name)}</span><button class="icon-btn danger" data-del="${t.id}" title="Delete table">&times;</button></li>`).join("");
+    ul.querySelectorAll("[data-del]").forEach(btn=> btn.addEventListener("click", ()=> deleteTable(btn.dataset.del)));
+  }
+
+  function renderClearedLog(){
+    const wrap = document.getElementById("clearedLog");
+    if(!data.clearedLog || data.clearedLog.length === 0){
+      wrap.innerHTML = `<p style="color:var(--text-faint); font-size:13.5px;">No cleared orders yet.</p>`;
+      return;
+    }
+    wrap.innerHTML = data.clearedLog.map(l=>{
+      const d = new Date(l.clearedAt);
+      const itemsSummary = (l.items||[]).map(i=> i.name + (i.qty>1?" x"+i.qty:"")).join(", ");
+      return `<div class="log-row">
+        <span class="log-name">${escapeHtml(l.tableName)} <span style="color:var(--text-faint); font-weight:400;">— ${escapeHtml(itemsSummary || "no items")}</span></span>
+        <span>${currency(l.total)} would-be · ${d.toLocaleDateString("en-IN")} ${d.toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"})}</span>
+      </div>`;
+    }).join("");
+  }
+
+  // ====================== SHIFT TABLE ======================
+  function renderShiftTab(){
+    const fromSel = document.getElementById("shiftFrom");
+    const toSel = document.getElementById("shiftTo");
+    const runningTables = data.tables.filter(t => !!data.orders[t.id]);
+    const emptyTables = data.tables.filter(t => !data.orders[t.id]);
+    const prevFrom = fromSel.value, prevTo = toSel.value;
+    fromSel.innerHTML = `<option value="">Select table…</option>` + runningTables.map(t=>
+      `<option value="${t.id}">${escapeHtml(t.name)} — ${currency(orderTotal(t.id))}</option>`).join("");
+    toSel.innerHTML = `<option value="">Select table…</option>` + emptyTables.map(t=>
+      `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join("");
+    if(runningTables.find(t=>t.id===prevFrom)) fromSel.value = prevFrom;
+    if(emptyTables.find(t=>t.id===prevTo)) toSel.value = prevTo;
+    updateShiftInfo();
+  }
+
+  function updateShiftInfo(){
+    const fromId = document.getElementById("shiftFrom").value;
+    const toId = document.getElementById("shiftTo").value;
+    const btn = document.getElementById("shiftBtn");
+    const info = document.getElementById("shiftInfo");
+    btn.disabled = !(fromId && toId && fromId !== toId);
+    const o = fromId ? data.orders[fromId] : null;
+    if(o){
+      const t = data.tables.find(x=>x.id===fromId);
+      const count = o.items.reduce((s,i)=>s+i.qty,0);
+      info.style.display = "block";
+      info.innerHTML = `<b>${escapeHtml(t?t.name:"")}</b> has ${count} item${count>1?"s":""} totalling ${currency(orderTotal(fromId))}, running for ${formatClock(orderElapsedMs(o))}${o.paused?" (paused)":""}. Shifting moves the order and its timer as-is.`;
+    } else {
+      info.style.display = "none";
+    }
+  }
+  document.getElementById("shiftFrom").addEventListener("change", updateShiftInfo);
+  document.getElementById("shiftTo").addEventListener("change", updateShiftInfo);
+
+  document.getElementById("shiftBtn").addEventListener("click", async ()=>{
+    const fromId = document.getElementById("shiftFrom").value;
+    const toId = document.getElementById("shiftTo").value;
+    if(!fromId || !toId || fromId === toId) return;
+    const order = data.orders[fromId];
+    if(!order) return;
+    const fromT = data.tables.find(x=>x.id===fromId);
+    const toT = data.tables.find(x=>x.id===toId);
+    if(!confirm(`Move the running order from ${fromT?fromT.name:""} to ${toT?toT.name:""}?`)) return;
+    await ordersCol.doc(toId).set(order);
+    await ordersCol.doc(fromId).delete();
+    showToast(`Shifted to ${toT ? toT.name : "table"}`);
+    document.getElementById("shiftFrom").value = "";
+    document.getElementById("shiftTo").value = "";
+    updateShiftInfo();
+  });
+
+  // ====================== SETTINGS: MENU ======================
+  document.getElementById("addMenuForm").addEventListener("submit", async e=>{
+    e.preventDefault();
+    const nameInput = document.getElementById("newItemName");
+    const catInput = document.getElementById("newItemCategory");
+    const priceInput = document.getElementById("newItemPrice");
+    const name = nameInput.value.trim();
+    const category = catInput.value.trim() || "General";
+    const price = parseFloat(priceInput.value);
+    if(!name || isNaN(price) || price < 0) return;
+    await menuCol.add({name, category, price});
+    nameInput.value = ""; catInput.value = ""; priceInput.value = "";
+  });
+
+  async function deleteMenuItem(id){
+    if(!confirm("Delete this menu item? It will stay on any bills already settled.")) return;
+    await menuCol.doc(id).delete();
+  }
+
+  function renderMenuList(){
+    const ul = document.getElementById("menuList");
+    if(data.menu.length===0){ ul.innerHTML = `<li style="justify-content:center; color:var(--text-faint);">No menu items yet</li>`; return; }
+    ul.innerHTML = data.menu.map(m=>`
+      <li>
+        <span><span class="cat-badge">${escapeHtml(m.category||"General")}</span><span class="li-name">${escapeHtml(m.name)}</span></span>
+        <span class="li-meta"><span class="li-price">${currency(m.price)}</span><button class="icon-btn danger" data-del="${m.id}" title="Delete item">&times;</button></span>
+      </li>`).join("");
+    ul.querySelectorAll("[data-del]").forEach(btn=> btn.addEventListener("click", ()=> deleteMenuItem(btn.dataset.del)));
+    const catList = document.getElementById("categoryList");
+    const cats = [...new Set(data.menu.map(m=>m.category||"General"))];
+    catList.innerHTML = cats.map(c=>`<option value="${escapeHtml(c)}">`).join("");
+  }
+
+  function renderSettings(){ renderTablesList(); renderMenuList(); }
+
+  // ====================== TICK: live per-second timers ======================
+  setInterval(()=>{
+    document.querySelectorAll(".t-timer").forEach(el=>{
+      const accum = Number(el.dataset.accum)||0;
+      const running = el.dataset.running;
+      const elapsed = accum + (running ? Date.now()-Number(running) : 0);
+      el.textContent = formatClock(elapsed);
+    });
+  }, 1000);
+
+})();
+</script>
+</body>
+</html>
